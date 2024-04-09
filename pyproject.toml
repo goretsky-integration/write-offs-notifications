@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "write-offs-notifications"
+version = "1.0.0"
+description = "Service to notify about upcoming ingredient's write-offs in google sheet."
+authors = ["Eldos <eldos.baktybekov@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "write_offs_notifications"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+gspread = "^6.1.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.1.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
