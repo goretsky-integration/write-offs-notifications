@@ -68,10 +68,6 @@ def is_any_none(*args) -> bool:
     return any(arg is None for arg in args)
 
 
-def filter_not_written_off(rows: Iterable[Row]) -> list[Row]:
-    return [row for row in rows if not row.is_written_off]
-
-
 @dataclass(slots=True)
 class WorksheetRowsBuilder:
     title: str | None = None
@@ -143,15 +139,15 @@ def check_upcoming_write_off(
     filters = (
         AlreadyExpiredFilter(interval_in_seconds=600),
         BeforeExpiredFilter(
-            event_type='EXPIRES_AT_15_MINUTES',
+            event_type='EXPIRE_AT_15_MINUTES',
             fire_before_in_seconds=900,
         ),
         BeforeExpiredFilter(
-            event_type='EXPIRES_AT_10_MINUTES',
+            event_type='EXPIRE_AT_10_MINUTES',
             fire_before_in_seconds=600,
         ),
         BeforeExpiredFilter(
-            event_type='EXPIRES_AT_5_MINUTES',
+            event_type='EXPIRE_AT_5_MINUTES',
             fire_before_in_seconds=300,
         ),
     )
@@ -171,6 +167,9 @@ def serialize_upcoming_write_offs(
     for worksheet in worksheets:
 
         for row in worksheet.rows:
+
+            if row.is_written_off:
+                continue
 
             event_type = check_upcoming_write_off(
                 now=now,
