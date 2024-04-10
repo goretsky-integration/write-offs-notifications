@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import pathlib
 
@@ -5,14 +6,12 @@ import gspread
 
 from config import load_config
 from google_sheets import SpreadsheetContext
-from parsers import (
-    filter_worksheet_upcoming_write_offs,
-    parse_worksheets_values,
-)
+from message_queue import publish_events
+from parsers import parse_worksheets_values, serialize_upcoming_write_offs
 from units_storage import get_units
 
 
-def main() -> None:
+async def main() -> None:
     config_file_path = pathlib.Path(__file__).parent.parent / 'config.toml'
     config = load_config(config_file_path)
 
@@ -31,13 +30,17 @@ def main() -> None:
 
     worksheets = parse_worksheets_values(value_ranges, config.timezone)
 
-    worksheets_with_upcoming_write_offs = [
-        filter_worksheet_upcoming_write_offs(worksheet, now)
-        for worksheet in worksheets
-    ]
+    events = serialize_upcoming_write_offs(
+        worksheets=worksheets,
+        now=now,
+        unit_name_to_id={unit.name: unit.id for unit in units},
+    )
 
-    print(worksheets_with_upcoming_write_offs)
+    await publish_events(
+        message_queue_url=config.message_queue_url,
+        events=events
+    )
 
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())

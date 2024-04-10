@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-__all__ = ('Worksheet', 'Row', 'Unit')
+__all__ = ('Worksheet', 'Row', 'Unit', 'Event', 'EventPayload')
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,3 +24,15 @@ class Unit(BaseModel):
     id: int
     name: str
     uuid: UUID
+
+
+class EventPayload(BaseModel):
+    type: str
+    unit_name: str
+    ingredient_name: str
+
+
+class Event(BaseModel):
+    unit_ids: list[int]
+    type: str = 'WRITE_OFFS'
+    payload: EventPayload

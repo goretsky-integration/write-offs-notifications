@@ -6,7 +6,7 @@ import pytest
 from models import Row
 from parsers import (
     is_any_none, none_if_empty, parse_checkbox_or_none,
-    parse_time_or_none, should_write_off,
+    parse_time_or_none,
 )
 
 
@@ -87,24 +87,3 @@ def test_parse_time_or_none_invalid(invalid_time_str):
 )
 def test_is_any_none(args, expected_result):
     assert is_any_none(*args) == expected_result
-
-
-@pytest.mark.parametrize(
-    "row_time, expected_result",
-    [
-        (time(hour=10, second=0), True),
-        (time(hour=10, second=1), False),
-        (time(hour=9, minute=59, second=0), True),
-        (time(hour=9, minute=58, second=59), False),
-        (time(hour=10, minute=1), False),
-        (time(hour=10, second=59), False),
-    ],
-)
-def test_should_write_off(row_time, expected_result):
-    now = datetime(2023, 11, 7, 10)
-    row = Row(
-        ingredient_name='test',
-        to_write_off_at=row_time,
-        is_written_off=False,
-    )
-    assert should_write_off(row, now) == expected_result

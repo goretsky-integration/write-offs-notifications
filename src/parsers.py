@@ -5,15 +5,15 @@ from dataclasses import dataclass
 from typing import TypeVar
 from zoneinfo import ZoneInfo
 
-from models import Row, Worksheet
+from filters import AlreadyExpiredFilter, BeforeExpiredFilter
+from models import Event, EventPayload, Row, Worksheet
 
 __all__ = (
     'parse_checkbox_or_none',
     'parse_time_or_none',
     'is_any_none',
     'none_if_empty',
-    'should_write_off',
-    'filter_worksheet_upcoming_write_offs',
+    'serialize_upcoming_write_offs',
     'parse_worksheets_values',
 )
 
@@ -70,19 +70,6 @@ def is_any_none(*args) -> bool:
 
 def filter_not_written_off(rows: Iterable[Row]) -> list[Row]:
     return [row for row in rows if not row.is_written_off]
-
-
-def should_write_off(
-        row: Row,
-        now: datetime.datetime,
-) -> bool:
-    to_write_off_at = datetime.datetime.combine(
-        date=now.date(),
-        time=row.to_write_off_at,
-        tzinfo=now.tzinfo,
-    )
-    delta = now - to_write_off_at
-    return 0 <= delta.total_seconds() <= 60
 
 
 @dataclass(slots=True)
@@ -149,11 +136,62 @@ def parse_worksheets_values(
     return [builder.build(timezone) for builder in title_to_builders.values()]
 
 
-def filter_worksheet_upcoming_write_offs(
-        worksheet: Worksheet,
+def check_upcoming_write_off(
         now: datetime.datetime,
-) -> Worksheet:
-    return Worksheet(
-        title=worksheet.title,
-        rows=[row for row in worksheet.rows if should_write_off(row, now)]
+        expires_at: datetime.time,
+) -> str | None:
+    filters = (
+        AlreadyExpiredFilter(interval_in_seconds=600),
+        BeforeExpiredFilter(
+            event_type='EXPIRES_AT_15_MINUTES',
+            fire_before_in_seconds=900,
+        ),
+        BeforeExpiredFilter(
+            event_type='EXPIRES_AT_10_MINUTES',
+            fire_before_in_seconds=600,
+        ),
+        BeforeExpiredFilter(
+            event_type='EXPIRES_AT_5_MINUTES',
+            fire_before_in_seconds=300,
+        ),
     )
+
+    for write_offs_filter in filters:
+        if write_offs_filter(now=now, expires_at=expires_at):
+            return write_offs_filter.event_type
+
+
+def serialize_upcoming_write_offs(
+        worksheets: Iterable[Worksheet],
+        now: datetime.datetime,
+        unit_name_to_id: Mapping[str, int],
+) -> list[Event]:
+    events = []
+
+    for worksheet in worksheets:
+
+        for row in worksheet.rows:
+
+            event_type = check_upcoming_write_off(
+                now=now,
+                expires_at=row.to_write_off_at,
+            )
+            if event_type is None:
+                continue
+
+            try:
+                unit_id = unit_name_to_id[worksheet.title]
+            except KeyError:
+                continue
+
+            event = Event(
+                unit_ids=[unit_id],
+                payload=EventPayload(
+                    unit_name=worksheet.title,
+                    ingredient_name=row.ingredient_name,
+                    type=event_type,
+                ),
+            )
+            events.append(event)
+
+    return events
