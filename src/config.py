@@ -12,6 +12,7 @@ class Config:
     spreadsheet_key: str
     timezone: ZoneInfo
     units_storage_base_url: str
+    message_queue_url: str
 
 
 def load_config(file_path: pathlib.Path) -> Config:
@@ -24,10 +25,12 @@ def load_config(file_path: pathlib.Path) -> Config:
     spreadsheet_key = config['google_sheets']['spreadsheet_key']
     timezone = ZoneInfo(config['timezone'])
     units_storage_base_url = config['units_storage']['base_url']
+    message_queue_url = config['message_queue']['url']
 
     return Config(
         google_sheets_credentials_file_path=google_sheets_credentials_file_path,
         spreadsheet_key=spreadsheet_key,
         timezone=timezone,
         units_storage_base_url=units_storage_base_url,
+        message_queue_url=message_queue_url,
     )
