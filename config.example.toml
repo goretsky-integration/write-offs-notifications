@@ -1,0 +1,11 @@
+timezone = "Europe/Moscow"
+
+[google_sheets]
+credentials_file_path = ""
+spreadsheet_key = ""
+
+[units_storage]
+base_url = ""
+
+[message_queue]
+url = ""
