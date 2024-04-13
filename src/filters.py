@@ -1,6 +1,8 @@
 import datetime
 from dataclasses import dataclass
 
+from enums import WriteOffType
+
 __all__ = ('BeforeExpiredFilter', 'AlreadyExpiredFilter', 'time_to_datetime')
 
 
@@ -17,7 +19,7 @@ def time_to_datetime(
 
 @dataclass(frozen=True, slots=True)
 class BeforeExpiredFilter:
-    event_type: str
+    event_type: WriteOffType
     fire_before_in_seconds: int
 
     def __call__(
@@ -35,7 +37,7 @@ class BeforeExpiredFilter:
 @dataclass(frozen=True, slots=True)
 class AlreadyExpiredFilter:
     interval_in_seconds: int
-    event_type: str = 'ALREADY_EXPIRED'
+    event_type: str = WriteOffType.ALREADY_EXPIRED
 
     def __call__(
             self,
