@@ -1,10 +1,13 @@
 import datetime
 from dataclasses import dataclass
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-__all__ = ('Worksheet', 'Row', 'Unit', 'Event', 'EventPayload')
+from enums import WriteOffType
+
+__all__ = ('Worksheet', 'Row', 'Unit', 'Event', 'EventPayload', 'RGBColor')
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,12 +30,18 @@ class Unit(BaseModel):
 
 
 class EventPayload(BaseModel):
-    type: str
+    type: WriteOffType
     unit_name: str
     ingredient_name: str
 
 
 class Event(BaseModel):
     unit_ids: list[int]
-    type: str = 'WRITE_OFFS'
     payload: EventPayload
+    type: str = Field(default='WRITE_OFFS', frozen=True)
+
+
+class RGBColor(BaseModel):
+    red: Annotated[float, Field(ge=0, le=1)]
+    green: Annotated[float, Field(ge=0, le=1)]
+    blue: Annotated[float, Field(ge=0, le=1)]
