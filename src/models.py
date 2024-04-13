@@ -7,7 +7,22 @@ from pydantic import BaseModel, Field
 
 from enums import WriteOffType
 
-__all__ = ('Worksheet', 'Row', 'Unit', 'Event', 'EventPayload', 'RGBColor')
+__all__ = ('Worksheet', 'Row', 'Unit', 'Event', 'EventPayload', 'RGBColor',
+           'WriteOffWorksheetCoordinates', 'ScheduledWriteOff')
+
+
+class WriteOffWorksheetCoordinates(BaseModel):
+    unit_name: str
+    row_number: int
+    to_write_off_at_column_number: int
+    is_written_off_column_number: int
+
+
+class ScheduledWriteOff(BaseModel):
+    ingredient_name: str
+    to_write_off_at: datetime.time
+    is_written_off: bool
+    worksheet_coordinates: WriteOffWorksheetCoordinates
 
 
 @dataclass(frozen=True, slots=True)
