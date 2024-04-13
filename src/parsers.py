@@ -1,12 +1,20 @@
 import collections
 import datetime
-from collections.abc import Iterable, Mapping, Sized
+import itertools
+import logging
+from collections.abc import Generator, Iterable, Mapping, Sized
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Protocol, TypeVar
 from zoneinfo import ZoneInfo
 
+from gspread.utils import a1_range_to_grid_range, rowcol_to_a1
+
+from enums import WriteOffType
 from filters import AlreadyExpiredFilter, BeforeExpiredFilter
-from models import Event, EventPayload, Row, Worksheet
+from models import (
+    EventPayload, NotificationEvent, ScheduledWriteOff, Worksheet,
+    WriteOffWorksheetCoordinates,
+)
 
 __all__ = (
     'parse_checkbox_or_none',
@@ -16,6 +24,8 @@ __all__ = (
     'serialize_upcoming_write_offs',
     'parse_worksheets_values',
 )
+
+logger = logging.getLogger('parser')
 
 T = TypeVar('T', bound=Sized)
 
@@ -71,20 +81,36 @@ def is_any_none(*args) -> bool:
 @dataclass(slots=True)
 class WorksheetRowsBuilder:
     title: str | None = None
+    write_off_time_column_number: int | None = None
+    checkbox_column_number: int | None = None
+
     ingredient_name_column: list[str] | None = None
     to_write_off_at_column: list[str] | None = None
     is_written_off_column: list[str] | None = None
 
-    def build(self, timezone: ZoneInfo) -> Worksheet:
+    def get_worksheet_coordinates(
+            self,
+            row_number: int,
+    ) -> WriteOffWorksheetCoordinates:
+        return WriteOffWorksheetCoordinates(
+            unit_name=self.title,
+            row_number=row_number,
+            write_off_time_column_number=self.write_off_time_column_number,
+            checkbox_column_number=self.checkbox_column_number,
+        )
+
+    def build(self, timezone: ZoneInfo) -> list[ScheduledWriteOff]:
         zipped = zip(
             self.ingredient_name_column,
             self.to_write_off_at_column,
             self.is_written_off_column,
         )
 
-        rows: list[Row] = []
+        write_offs: list[ScheduledWriteOff] = []
 
-        for ingredient_name, to_write_off_at, is_written_off in zipped:
+        for row_number, values in enumerate(zipped, start=2):
+            ingredient_name, to_write_off_at, is_written_off = values
+
             ingredient_name = none_if_empty(ingredient_name)
             to_write_off_at = parse_time_or_none(to_write_off_at, timezone)
             is_written_off = parse_checkbox_or_none(is_written_off)
@@ -96,20 +122,22 @@ class WorksheetRowsBuilder:
             ):
                 continue
 
-            row = Row(
+            worksheet_coordinates = self.get_worksheet_coordinates(row_number)
+            write_off = ScheduledWriteOff(
                 ingredient_name=ingredient_name,
                 to_write_off_at=to_write_off_at,
                 is_written_off=is_written_off,
+                worksheet_coordinates=worksheet_coordinates,
             )
-            rows.append(row)
+            write_offs.append(write_off)
 
-        return Worksheet(title=self.title, rows=rows)
+        return write_offs
 
 
 def parse_worksheets_values(
         value_ranges: Iterable[Mapping],
         timezone: ZoneInfo,
-) -> list[Worksheet]:
+) -> itertools.chain[Worksheet]:
     title_to_builders = collections.defaultdict(WorksheetRowsBuilder)
 
     for value_range in value_ranges:
@@ -122,32 +150,45 @@ def parse_worksheets_values(
 
         builder = title_to_builders[title]
 
-        if values_range.startswith('A'):
+        is_ingredient_names_column = values_range.startswith('A')
+
+        if is_ingredient_names_column:
             builder.title = title
             builder.ingredient_name_column = value_range['values'][0]
         else:
             builder.to_write_off_at_column = value_range['values'][0]
             builder.is_written_off_column = value_range['values'][1]
 
-    return [builder.build(timezone) for builder in title_to_builders.values()]
+            grid_range = a1_range_to_grid_range(values_range)
+            write_off_time_column_number = grid_range['startColumnIndex'] + 1
+            checkbox_column_number = grid_range['endColumnIndex']
+
+            builder.write_off_time_column_number = write_off_time_column_number
+            builder.checkbox_column_number = checkbox_column_number
+
+    nested_write_offs = (
+        builder.build(timezone)
+        for builder in title_to_builders.values()
+    )
+    return itertools.chain.from_iterable(nested_write_offs)
 
 
 def check_upcoming_write_off(
         now: datetime.datetime,
         expires_at: datetime.time,
-) -> str | None:
+) -> WriteOffType | None:
     filters = (
         AlreadyExpiredFilter(interval_in_seconds=600),
         BeforeExpiredFilter(
-            event_type='EXPIRE_AT_15_MINUTES',
+            event_type=WriteOffType.EXPIRE_AT_15_MINUTES,
             fire_before_in_seconds=900,
         ),
         BeforeExpiredFilter(
-            event_type='EXPIRE_AT_10_MINUTES',
+            event_type=WriteOffType.EXPIRE_AT_10_MINUTES,
             fire_before_in_seconds=600,
         ),
         BeforeExpiredFilter(
-            event_type='EXPIRE_AT_5_MINUTES',
+            event_type=WriteOffType.EXPIRE_AT_5_MINUTES,
             fire_before_in_seconds=300,
         ),
     )
@@ -157,40 +198,60 @@ def check_upcoming_write_off(
             return write_offs_filter.event_type
 
 
+class HasIsWrittenOff(Protocol):
+    is_written_off: bool
+
+
+HasIsWrittenOffT = TypeVar('HasIsWrittenOffT', bound=HasIsWrittenOff)
+
+
+def filter_written_off(
+        items: Iterable[HasIsWrittenOffT],
+) -> Generator[HasIsWrittenOffT, None, None]:
+    return (item for item in items if not item.is_written_off)
+
+
 def serialize_upcoming_write_offs(
-        worksheets: Iterable[Worksheet],
+        write_offs: Iterable[ScheduledWriteOff],
         now: datetime.datetime,
         unit_name_to_id: Mapping[str, int],
-) -> list[Event]:
-    events = []
+) -> list[NotificationEvent]:
+    events: list[NotificationEvent] = []
+    for write_off in filter_written_off(write_offs):
 
-    for worksheet in worksheets:
+        print(write_off)
+        event_type = check_upcoming_write_off(
+            now=now,
+            expires_at=write_off.to_write_off_at,
+        )
+        if event_type is None:
+            continue
 
-        for row in worksheet.rows:
+        unit_name = write_off.worksheet_coordinates.unit_name
+        try:
+            unit_id = unit_name_to_id[unit_name]
+        except KeyError:
+            logger.warning(f'Unit {unit_name} not found')
+            continue
 
-            if row.is_written_off:
-                continue
+        write_off_time_a1_coordinates = rowcol_to_a1(
+            row=write_off.worksheet_coordinates.row_number,
+            col=write_off.worksheet_coordinates.write_off_time_column_number,
+        )
+        checkbox_a1_coordinates = rowcol_to_a1(
+            row=write_off.worksheet_coordinates.row_number,
+            col=write_off.worksheet_coordinates.checkbox_column_number,
+        )
 
-            event_type = check_upcoming_write_off(
-                now=now,
-                expires_at=row.to_write_off_at,
-            )
-            if event_type is None:
-                continue
-
-            try:
-                unit_id = unit_name_to_id[worksheet.title]
-            except KeyError:
-                continue
-
-            event = Event(
-                unit_ids=[unit_id],
-                payload=EventPayload(
-                    unit_name=worksheet.title,
-                    ingredient_name=row.ingredient_name,
-                    type=event_type,
-                ),
-            )
-            events.append(event)
+        payload = EventPayload(
+            unit_name=unit_name,
+            ingredient_name=write_off.ingredient_name,
+            type=event_type,
+            write_off_time_a1_coordinates=write_off_time_a1_coordinates,
+            checkbox_a1_coordinates=checkbox_a1_coordinates,
+        )
+        event = NotificationEvent(unit_ids=[unit_id], payload=payload)
+        logger.info(f'New event: {event}')
+        events.append(event)
 
     return events

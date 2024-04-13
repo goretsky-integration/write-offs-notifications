@@ -7,15 +7,23 @@ from pydantic import BaseModel, Field
 
 from enums import WriteOffType
 
-__all__ = ('Worksheet', 'Row', 'Unit', 'Event', 'EventPayload', 'RGBColor',
-           'WriteOffWorksheetCoordinates', 'ScheduledWriteOff')
+__all__ = (
+    'Worksheet',
+    'Row',
+    'Unit',
+    'NotificationEvent',
+    'EventPayload',
+    'RGBColor',
+    'WriteOffWorksheetCoordinates',
+    'ScheduledWriteOff',
+)
 
 
 class WriteOffWorksheetCoordinates(BaseModel):
     unit_name: str
     row_number: int
-    to_write_off_at_column_number: int
-    is_written_off_column_number: int
+    write_off_time_column_number: int
+    checkbox_column_number: int
 
 
 class ScheduledWriteOff(BaseModel):
@@ -48,9 +56,12 @@ class EventPayload(BaseModel):
     type: WriteOffType
     unit_name: str
     ingredient_name: str
+    write_off_time_a1_coordinates: str
+    checkbox_a1_coordinates: str
 
 
-class Event(BaseModel):
+class NotificationEvent(BaseModel):
+    """Event that will be to the notifications router service."""
     unit_ids: list[int]
     payload: EventPayload
     type: str = Field(default='WRITE_OFFS', frozen=True)
