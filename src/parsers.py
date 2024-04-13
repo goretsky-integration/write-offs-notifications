@@ -219,7 +219,6 @@ def serialize_upcoming_write_offs(
     events: list[NotificationEvent] = []
     for write_off in filter_written_off(write_offs):
 
-        print(write_off)
         event_type = check_upcoming_write_off(
             now=now,
             expires_at=write_off.to_write_off_at,
