@@ -161,3 +161,6 @@ cython_debug/
 
 # Config
 config.toml
+
+# Google sheets
+google-sheets-service-account-credentials.json
