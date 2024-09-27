@@ -4,6 +4,7 @@ import logging
 import pathlib
 
 import gspread
+from gspread import Worksheet
 
 from colors import WRITE_OFF_TYPE_TO_COLOR
 from config import load_config
@@ -26,9 +27,22 @@ async def main() -> None:
     client = gspread.service_account(config.google_sheets_credentials_file_path)
     spreadsheet = client.open_by_key(config.spreadsheet_key)
 
+    worksheets: list[Worksheet] = spreadsheet.worksheets(exclude_hidden=True)
+
+    permitted_titles = {unit.name for unit in units}
+    titles_whitelist = set()
+    for worksheet in worksheets:
+        if worksheet.title not in permitted_titles:
+            logger.warning(f'Skipping worksheet: {worksheet.title}')
+        else:
+            titles_whitelist.add(worksheet.title)
+
+    if not titles_whitelist:
+        return
+
     spreadsheet_context = SpreadsheetContext(
         spreadsheet=spreadsheet,
-        titles_whitelist={unit.name for unit in units}
+        titles_whitelist=titles_whitelist,
     )
     value_ranges = spreadsheet_context.get_values(now)
 

@@ -100,6 +100,13 @@ class WorksheetRowsBuilder:
         )
 
     def build(self, timezone: ZoneInfo) -> list[ScheduledWriteOff]:
+        if is_any_none(
+                self.ingredient_name_column,
+                self.to_write_off_at_column,
+                self.is_written_off_column,
+        ):
+            return []
+
         zipped = zip(
             self.ingredient_name_column,
             self.to_write_off_at_column,
@@ -152,12 +159,14 @@ def parse_worksheets_values(
 
         is_ingredient_names_column = values_range.startswith('A')
 
-        if is_ingredient_names_column:
+        columns = value_range.get('values', [])
+
+        if is_ingredient_names_column and len(columns) == 1:
             builder.title = title
-            builder.ingredient_name_column = value_range['values'][0]
-        else:
-            builder.to_write_off_at_column = value_range['values'][0]
-            builder.is_written_off_column = value_range['values'][1]
+            builder.ingredient_name_column = columns[0]
+        elif not is_ingredient_names_column and len(columns) == 2:
+            builder.to_write_off_at_column = columns[0]
+            builder.is_written_off_column = columns[1]
 
             grid_range = a1_range_to_grid_range(values_range)
             write_off_time_column_number = grid_range['startColumnIndex'] + 1
